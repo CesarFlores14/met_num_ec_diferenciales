@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AquaResiliencia · Simulador de reservas de agua</title>
+<meta name="description" content="Simulador matemático de autonomía y gestión de reservas de agua (EDO, Heun y RK4). UMSA · Métodos Numéricos.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="src/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="top">
+    <div><h1>💧 AquaResiliencia</h1>
+    <p>Simulador matemático de autonomía y gestión de reservas de agua ante interrupciones del suministro</p></div>
+    <span id="conexion" class="chip">Comprobando conexión…</span>
+  </div>
+  <nav aria-label="Secciones">
+    <a href="#dashboard" data-s="dashboard">Dashboard</a><a href="#config" data-s="config">Configuración</a>
+    <a href="#escenarios" data-s="escenarios">Escenarios</a><a href="#resultados" data-s="resultados">Resultados</a>
+    <a href="#tabla" data-s="tabla">Tabla</a><a href="#analisis" data-s="analisis">Análisis</a>
+    <a href="#historial" data-s="historial">Historial</a>
+  </nav>
+</header>
+<div id="toast" class="toast" hidden role="status"></div>
+<main>
+
+<section id="dashboard">
+  <h2>Dashboard</h2>
+  <div class="card hero"><p><b>Pregunta central:</b> ¿cómo estimar la disponibilidad y autonomía de las reservas de agua de una comunidad ante distintos escenarios de consumo, pérdidas y abastecimiento, usando ecuaciones diferenciales y métodos numéricos?</p>
+  <p class="mu">Contexto: comunidades urbanas y periurbanas de La Paz y El Alto (Bolivia). Los parámetros son <b>hipotéticos y editables</b>; los resultados no son predicciones reales ni mediciones oficiales.</p></div>
+  <div class="row"><span id="estado" class="chip"></span></div>
+  <div class="grid">
+    <div class="card kpi"><i class="ic">💧</i><span>Volumen inicial V₀</span><b id="kV0"></b></div>
+    <div class="card kpi"><i class="ic">🚿</i><span>Consumo diario C</span><b id="kC"></b></div>
+    <div class="card kpi"><i class="ic">🚰</i><span>Abastecimiento diario Q</span><b id="kQ"></b></div>
+    <div class="card kpi"><i class="ic">🛢️</i><span>Reserva inicial / capacidad</span><b id="kPct"></b><div class="bar"><i id="barra"></i></div></div>
+    <div class="card kpi"><i class="ic">📉</i><span>Volumen final (analítico)</span><b id="kFin"></b></div>
+    <div class="card kpi"><i class="ic">⏳</i><span>Autonomía (agotamiento)</span><b id="kAgot"></b></div>
+  </div>
+  <div class="alert red" id="aviso-neg" hidden>⚠ La reserva llega a cero dentro de T: los valores posteriores del modelo no son agua disponible.</div>
+  <div class="alert" id="aviso-cap" hidden></div>
+  <h3>Acceso rápido a escenarios</h3>
+  <div class="grid" id="rapidos"></div>
+  <div class="row"><button data-ir="config">Editar parámetros</button><button class="sec" data-ir="resultados">Ver resultados</button></div>
+</section>
+
+<section id="config" hidden>
+  <h2>Configuración de la simulación</h2>
+  <form id="form" class="card" novalidate>
+    <div class="grid">
+      <div><label for="V0">V₀ <small>volumen inicial (litros)</small></label><input id="V0" type="number" step="any" min="0" required></div>
+      <div><label for="capacidad">Capacidad del tanque <small>(litros)</small></label><input id="capacidad" type="number" step="any" min="0" required></div>
+      <div><label for="Q">Q <small>abastecimiento (litros/día)</small></label><input id="Q" type="number" step="any" min="0" required></div>
+      <div><label for="C">C <small>consumo (litros/día)</small></label><input id="C" type="number" step="any" min="0" required></div>
+      <div><label for="lambda">λ <small>pérdidas (1/día)</small></label><input id="lambda" type="number" step="any" min="0" required></div>
+      <div><label for="T">T <small>tiempo total (días)</small></label><input id="T" type="number" step="any" min="0" required></div>
+      <div><label for="h">h <small>tamaño de paso (días)</small></label><input id="h" type="number" step="any" min="0" required></div>
+    </div>
+    <ul id="errores" class="err" hidden></ul>
+    <div class="row"><button type="submit">Simular</button><button type="button" class="sec" data-ir="escenarios">Elegir escenario</button></div>
+  </form>
+  <div class="card"><h3>Modelo</h3>
+    <div class="eq">dV/dt = Q − C − λV, &nbsp; V(0) = V₀</div>
+    <p class="mu">V(t): litros almacenados · t: días · Q, C: litros/día · λ: 1/día. El agua entra por abastecimiento y sale por consumo y pérdidas proporcionales al volumen almacenado.</p></div>
+</section>
+
+<section id="escenarios" hidden>
+  <h2>Escenarios</h2>
+  <p class="mu">Valores hipotéticos documentados (tanque de 10 000 L, V₀ = 6 000 L, T = 15 días). Cárguelos y edítelos en Configuración.</p>
+  <div class="grid" id="listaEsc"></div>
+  <div class="card" style="margin-top:1rem"><h3>Guardar lo configurado</h3>
+    <label for="simNombre">Nombre</label><input id="simNombre" maxlength="120">
+    <label for="simDesc" style="margin-top:.5rem">Descripción</label><textarea id="simDesc" rows="2" maxlength="1000"></textarea>
+    <div class="row"><button id="btnGuardarEsc">Guardar como escenario</button><button id="btnGuardar" class="sec">Guardar simulación en historial</button></div>
+    <p class="mu">Escenario actual: <b id="escNombre"></b> — <span id="escDesc"></span></p>
+    <div class="alert blue" id="ayudaDB" hidden>Para guardar en la nube: cree un proyecto en Supabase, ejecute <code>schema.sql</code> y complete <code>src/config.js</code> con la URL y la clave pública (ver README). Mientras tanto todo funciona en modo demostración, sin persistencia permanente.</div>
+  </div>
+</section>
+
+<section id="resultados" hidden>
+  <h2>Resultados matemáticos</h2>
+  <div class="card">
+    <div class="row"><b>Tamaño de paso h = <span id="hLbl"></span> d</b>
+      <button class="sec" data-h="1">h = 1</button><button class="sec" data-h="0.5">h = 0.5</button><button class="sec" data-h="0.25">h = 0.25</button>
+      <input id="hLibre" type="number" step="any" min="0" placeholder="otro h" style="width:110px" aria-label="Otro tamaño de paso">
+      <button id="hRec">Recalcular</button><button id="btnSim" class="sec">Simular con la configuración</button></div>
+    <div class="chart"><canvas id="cV" role="img" aria-label="Volumen en el tiempo: analítica, Heun y RK4"></canvas></div>
+  </div>
+  <div class="alert blue">Las curvas se ven casi superpuestas porque ambos métodos son muy precisos: la diferencia (litros) es minúscula frente al volumen (miles de litros). Las gráficas siguientes la amplían.</div>
+  <div class="card"><h3>Diferencia respecto a la solución analítica</h3>
+    <div class="grid2"><div class="chart sm"><canvas id="cDH" role="img" aria-label="Diferencia de Heun con la exacta"></canvas></div>
+    <div class="chart sm"><canvas id="cDR" role="img" aria-label="Diferencia de RK4 con la exacta"></canvas></div></div>
+    <p class="mu" id="notaDif"></p></div>
+  <div class="card"><h3>Errores absolutos por iteración</h3><p class="mu">Escala logarítmica: se omiten errores exactamente iguales a 0 (log 0 no existe).</p>
+    <div class="chart"><canvas id="cE"></canvas></div></div>
+  <div class="card"><h3>Convergencia: error final según el tamaño de paso h</h3>
+    <p class="mu">Al reducir h el error baja. En escala log-log, Heun sigue una recta de pendiente ≈ 2 y RK4 de pendiente ≈ 4 (líneas punteadas = referencia). Cuando el error baja de ~1e-10 domina el redondeo y ya no se calcula el orden.</p>
+    <div class="chart"><canvas id="cK"></canvas></div>
+    <div class="scroll"><table><thead><tr><th>h (d)</th><th>Error Heun</th><th>Orden Heun</th><th>Error RK4</th><th>Orden RK4</th></tr></thead><tbody id="convBody"></tbody></table></div></div>
+  <div class="card"><h3>Comparación de los tres escenarios (solución analítica)</h3>
+    <div class="chart"><canvas id="cS"></canvas></div></div>
+  <div class="card"><h3>Resumen final</h3><div class="scroll"><table id="resumen"></table></div></div>
+</section>
+
+<section id="tabla" hidden>
+  <h2>Tabla comparativa</h2>
+  <div class="row"><button id="btnCsv">Exportar CSV</button><span class="mu" id="nota-tabla"></span></div>
+  <div class="card scroll"><table>
+    <thead><tr><th>Iter.</th><th>t (d)</th><th>Analítica (L)</th><th>Heun (L)</th><th>Ea Heun</th><th>Er Heun (%)</th><th>RK4 (L)</th><th>Ea RK4</th><th>Er RK4 (%)</th></tr></thead>
+    <tbody id="tbody"></tbody></table></div>
+</section>
+
+<section id="analisis" hidden>
+  <h2>Análisis e interpretación</h2>
+  <div class="card"><h3>Interpretación automática</h3><ul id="interp"></ul>
+    <p class="mu">Basada en los valores calculados. La EDO se integra sin truncar valores negativos; V &lt; 0 indica agotamiento, no agua disponible. La capacidad del tanque es un límite físico que el modelo no impone: solo se advierte.</p></div>
+  <div class="card"><h3>Comprobación de la solución analítica</h3><ul id="verif"></ul></div>
+  <div class="card"><h3>Explicación breve</h3>
+    <p>Es una EDO lineal de primer orden. Con V* = (Q−C)/λ el equilibrio, la solución es:</p>
+    <div class="eq">V(t) = V* + (V₀ − V*)·e^(−λt) &nbsp; (λ ≠ 0) &nbsp;|&nbsp; V(t) = V₀ + (Q−C)t &nbsp; (λ = 0)</div>
+    <p><b>Heun (RK2):</b> predice con Euler y corrige promediando pendientes; error global O(h²).<br>
+    <b>RK4:</b> promedia cuatro pendientes (k₁, 2k₂, 2k₃, k₄); error global O(h⁴). Ambos usan los mismos parámetros, V₀, T y malla; si T no es múltiplo de h, el último paso es el restante.</p></div>
+</section>
+
+<section id="historial" hidden>
+  <h2>Historial de simulaciones</h2>
+  <p class="mu" id="hNota"></p>
+  <div class="card scroll"><table>
+    <thead><tr><th>Nombre</th><th>Fecha</th><th>h</th><th>V final analít.</th><th>Error Heun</th><th>Error RK4</th><th></th></tr></thead>
+    <tbody id="hBody"></tbody></table></div>
+</section>
+</main>
+<footer>Cesar Mauricio Flores Laura · Informática (Desarrollo de Software e Innovación Tecnológica) · UMSA · Métodos Numéricos<br>Parámetros hipotéticos con fines académicos.</footer>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>

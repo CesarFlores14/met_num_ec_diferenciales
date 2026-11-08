@@ -1,0 +1,7 @@
+{
+  "name": "aqua-resiliencia",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": { "test": "node --test tests/math.test.js", "start": "py -m http.server 8080" },
+  "license": "MIT"
+}
